@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+
+import browsercookie
+import requests
 from requests import Session
 from requests.exceptions import ConnectionError
 import logging
@@ -102,6 +105,16 @@ class ResilientSession(Session):
         time.sleep(delay)
         return True
 
+    def cookies_extractor(self):
+        cj = browsercookie.load()
+        cookies = {}
+        for k in cj._cookies:
+            for kk in cj._cookies[k]:
+                for kkk in cj._cookies[k][kk]:
+                    if k == "alm.accenture.com" and kk == "/jira/":
+                        cookies[kkk] = cj._cookies[k][kk][kkk].value
+        return cookies
+
     def __verb(self, verb, url, retry_data=None, **kwargs):
 
         d = self.headers.copy()
@@ -120,7 +133,17 @@ class ResilientSession(Session):
             exception = None
             try:
                 method = getattr(super(ResilientSession, self), verb.lower())
-                response = method(url, **kwargs)
+                #response = method(url, **kwargs)
+                headers = {
+                        'Host': 'alm.accenture.com',
+                        'Cache-Control': 'max-age=0',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Upgrade-Insecure-Requests': '1',
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.86 Safari/537.36',
+                        'DNT': '1',
+                        'Accept-Language': 'en-US,en;q=0.8,ru;q=0.6,uk;q=0.4,tr;q=0.2',
+                        }
+                response = requests.get(url, headers=headers, cookies=self.cookies_extractor())
                 if response.status_code == 200:
                     return response
             except ConnectionError as e:

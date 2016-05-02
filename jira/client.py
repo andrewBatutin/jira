@@ -3,6 +3,8 @@
 from __future__ import unicode_literals
 from __future__ import print_function
 
+import browsercookie
+
 """
 This module implements a friendly (well, friendlier) interface between the raw JSON
 responses from JIRA and the Resource/dict abstractions provided by this library. Users
@@ -187,7 +189,7 @@ class JIRA(object):
     JIRA_BASE_URL = Resource.JIRA_BASE_URL
     AGILE_BASE_URL = GreenHopperResource.AGILE_BASE_URL
 
-    def __init__(self, server=None, options=None, basic_auth=None, oauth=None, jwt=None, kerberos=False,
+    def __init__(self, server=None, options=None, basic_auth=None, cookies_auth=None, oauth=None, jwt=None, kerberos=False,
                  validate=False, get_server_info=True, async=False, logging=True, max_retries=3):
         """
         Construct a JIRA client instance.
@@ -272,6 +274,9 @@ class JIRA(object):
             self._create_oauth_session(oauth)
         elif basic_auth:
             self._create_http_basic_session(*basic_auth)
+            self._session.headers.update(self._options['headers'])
+        elif cookies_auth:
+            self._create_http_cookies_session()
             self._session.headers.update(self._options['headers'])
         elif jwt:
             self._create_jwt_session(jwt)
@@ -2092,6 +2097,18 @@ class JIRA(object):
         self._session.auth = (username, password)
         self._session.cert = self._options['client_cert']
 
+    def _create_http_cookies_session(self):
+        cookies = self._options['cookies']
+        #headers = self._options['headers']
+        self._session = ResilientSession()
+        verify = self._options['verify']
+        self._session.verify = verify
+        #self._session.auth = (username, password)
+        self._session.cert = self._options['client_cert']
+        self._session.cookies = cookies
+        #self._session.headers = headers
+
+
     def _create_oauth_session(self, oauth):
         verify = self._options['verify']
 
@@ -2149,9 +2166,32 @@ class JIRA(object):
         options.update({'path': path})
         return base.format(**options)
 
+    def cookies_extractor(self):
+        cj = browsercookie.load()
+        cookies = {}
+        for k in cj._cookies:
+            for kk in cj._cookies[k]:
+                for kkk in cj._cookies[k][kk]:
+                    if k == "alm.accenture.com" and kk == "/jira/":
+                        cookies[kkk] = cj._cookies[k][kk][kkk].value
+        return cookies
+
+
+
     def _get_json(self, path, params=None, base=JIRA_BASE_URL):
         url = self._get_url(path, base)
-        r = self._session.get(url, params=params)
+
+        headers = {
+            'Host': 'alm.accenture.com',
+            'Cache-Control': 'max-age=0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.86 Safari/537.36',
+            'DNT': '1',
+            'Accept-Language': 'en-US,en;q=0.8,ru;q=0.6,uk;q=0.4,tr;q=0.2',
+            }
+        #r = requests.get(url, headers=headers, cookies=self.cookies_extractor())
+        r = self._session.get(url, params=params, cookies=self.cookies_extractor())
         try:
             r_json = json_loads(r)
         except ValueError as e:
